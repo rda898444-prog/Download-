@@ -1,0 +1,98 @@
+name: Test Links (Size & Status)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Check links
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          links = {
+              "1. Archive MP4 (~545MB)": "http://archive.org/download/In%20the%20Realm%20of%20the%20Senses.mp4",
+              "2. Archive M4V (~7GB)": "http://archive.org/download/In%20the%20Realm%20of%20the%20Senses.m4v",
+              "3. Archive MKV 1080p (~5.6GB)": "http://archive.org/download/%5BAS3%20Archive%5D%20In%20the%20Realm%20of%20the%20Senses%20NC-17%20version%20%5B1976%2C%201792x1080p%2C%20English%20mono%5D.mkv",
+              "4. Archive MP4 1080p (~558MB)": "http://archive.org/download/%5BAS3%20Archive%5D%20In%20the%20Realm%20of%20the%20Senses%20NC-17%20version%20%5B1976%2C%201792x1080p%2C%20English%20mono%5D.ia.mp4",
+              "5. Mega": "https://mega.co.nz/#!mUYFwS5Q!L3ktvkCrWEohYpLaVrP0ERv7ERoLH_aGU9JBOwzfTks",
+              "6. 35anj": "https://35anj.net/in-the-realm-of-the-senses/",
+              "7. SUBDL": "https://subdl.com/es/subtitle/sd11834/in-the-realm-of-the-senses-ai-no-korda-1976/farsi_persian",
+              "8. Subtitle Cat": "https://subtitlecat.com/subs/1604/In%20The%20Realm%20Of%20The%20Senses%20(1976)%20Vietsud.html",
+              "9. Virgool": "https://virgool.io/@backingenergyha/comment/osbqnhdxapgubyy",
+              "10. Serial Blog": "https://serial.blog.ir/",
+              "11. Google Redirect": "https://www.google.com/url?opi=89978449&q=https://serialblog2.top/&sa=U&ved=2ahUKEwiB-bi1wMCXAxU3R_EDHcC_GhcQFnoECA8QAQ&usg=AOvVaw1No6YVbR6kc5HnKTBNP0KA",
+              "12. Serial Blog 2": "https://serialblog2.top/"
+          }
+
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          }
+
+          def format_size(bytes_size):
+              if not bytes_size:
+                  return "نامشخص (صفحه وب)"
+              if bytes_size >= 1024 * 1024 * 1024:
+                  return f"{bytes_size / (1024**3):.2f} GB"
+              elif bytes_size >= 1024 * 1024:
+                  return f"{bytes_size / (1024**2):.2f} MB"
+              else:
+                  return f"{bytes_size / 1024:.2f} KB"
+
+          summary_file = os.environ["GITHUB_STEP_SUMMARY"]
+          with open(summary_file, "a") as f:
+              f.write("| # | نام | وضعیت (Status) | حجم |\n")
+              f.write("|---|---|---|---|\n")
+
+          print("شروع بررسی لینک‌ها...\n" + "="*50)
+
+          for name, url in links.items():
+              status_code = "خطا"
+              size_str = "نامشخص"
+              try:
+                  # HEAD request for fast check
+                  response = requests.head(url, headers=headers, timeout=15, allow_redirects=True)
+                  
+                  # If server doesn't support HEAD, try GET with stream
+                  if response.status_code == 405:
+                      response = requests.get(url, headers=headers, timeout=15, stream=True)
+                      response.close()
+
+                  status_code = str(response.status_code)
+                  content_length = response.headers.get('Content-Length')
+                  size_str = format_size(int(content_length)) if content_length else "نامشخص (صفحه وب)"
+
+                  if response.status_code == 200:
+                      print(f"✅ {name}")
+                      print(f"   وضعیت: {status_code} OK | حجم: {size_str}")
+                  else:
+                      print(f"❌ {name}")
+                      print(f"   وضعیت: {status_code} | خطا در دسترسی")
+                      
+              except requests.exceptions.RequestException as e:
+                  print(f"⚠️ {name}")
+                  print(f"   خطای شبکه/تایم‌اوت: {str(e)[:50]}...")
+                  status_code = "Timeout/Error"
+              
+              print("-" * 50)
+
+              # Write to GitHub Job Summary
+              with open(summary_file, "a") as f:
+                  emoji = "✅" if status_code == "200" else "❌"
+                  f.write(f"| {name.split('.')[0]} | {name.split('.', 1)[1].strip()} | {emoji} {status_code} | {size_str} |\n")
+          PY
