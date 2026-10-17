@@ -1,0 +1,40 @@
+name: Cleanup (releases + workflow runs)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'برای تایید بنویس: YES'
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ inputs.confirm == 'YES' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all releases + tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' | while read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "🗑️  Deleting release: $tag"
+            gh release delete "$tag" --yes --cleanup-tag || true
+          done
+
+      - name: Delete all workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run list --limit 1000 --json databaseId,status \
+            --jq '.[] | select(.status == "completed") | .databaseId' \
+            | while read -r id; do
+              [ -z "$id" ] && continue
+              echo "🗑️  Deleting run: $id"
+              gh run delete "$id" || true
+            done
