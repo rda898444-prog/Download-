@@ -1,0 +1,87 @@
+name: Download file to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'File URL'
+        required: true
+        type: string
+      filename:
+        description: 'اسم فایل با پسوند (خالی = از URL گرفته می‌شود)'
+        required: false
+        default: ''
+        type: string
+      tag:
+        description: 'Release tag (مثلاً v1)'
+        required: true
+        default: 'v1'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Download file
+        id: dl
+        env:
+          FILE_URL: ${{ inputs.file_url }}
+          FILENAME: ${{ inputs.filename }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          from pathlib import Path
+          from urllib.parse import urlparse, unquote, quote
+
+          url = os.environ["FILE_URL"]
+          name = os.environ.get("FILENAME", "").strip()
+
+          if not name:
+              name = unquote(os.path.basename(urlparse(url).path)) or "file.bin"
+
+          # جلوگیری از path traversal
+          name = os.path.basename(name)
+
+          out_dir = Path("files")
+          out_dir.mkdir(exist_ok=True)
+          dest = out_dir / name
+
+          print(f"⬇️  Downloading: {url}")
+          print(f"📁 Saving as: {dest}")
+          with requests.get(url, stream=True, timeout=120) as r:
+              r.raise_for_status()
+              with open(dest, "wb") as f:
+                  for chunk in r.iter_content(chunk_size=1024 * 1024):
+                      if chunk:
+                          f.write(chunk)
+
+          size_mb = dest.stat().st_size / 1024 / 1024
+          print(f"✅ Done: {dest}  ({size_mb:.1f} MB)")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"filename_url={quote(name)}\n")
+          PY
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: files/*
+          fail_on_unmatched_files: true
+
+      - name: Print download link
+        run: |
+          LINK="https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ steps.dl.outputs.filename_url }}"
+          echo "🔗 Download link: $LINK"
+          {
+            echo "### 🔗 لینک دانلود"
+            echo ""
+            echo '```'
+            echo "$LINK"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
