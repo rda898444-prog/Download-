@@ -1,0 +1,51 @@
+name: Download with aria2 and Upload to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'لینک دانلود فایل (URL)'
+        required: true
+        type: string
+      tag_name:
+        description: 'نام تگ برای ریلیز (مثلاً v1.0.0)'
+        required: true
+        type: string
+        default: 'v1.0.0'
+
+# نیاز به دسترسی نوشتن برای ساخت ریلیز و آپلود فایل
+permissions:
+  contents: write
+
+jobs:
+  download-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install aria2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2
+
+      - name: Download file using aria2
+        run: |
+          mkdir -p downloads
+          # دانلود فایل با ۱۶ کانکشن همزمان و سرعت بالا
+          aria2c -x 16 -s 16 -k 1M -d ./downloads "${{ github.event.inputs.file_url }}"
+
+      - name: List downloaded files
+        run: |
+          echo "✅ فایل‌های دانلود شده:"
+          ls -lh downloads/
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          files: ./downloads/*
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
