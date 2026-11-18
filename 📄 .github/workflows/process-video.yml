@@ -1,0 +1,50 @@
+name: Process and Release Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'لینک مستقیم دانلود فیلم'
+        required: true
+        type: string
+      release_tag:
+        description: 'تگ انتشار (مثلاً v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  process-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Download video
+        run: |
+          curl -L -o input.mp4 "${{ inputs.video_url }}"
+
+      - name: Move moov atom to the beginning (Faststart)
+        run: |
+          ffmpeg -i input.mp4 -c copy -movflags +faststart output.mp4
+
+      - name: Verify output file
+        run: |
+          if [ ! -f output.mp4 ]; then
+            echo "::error::File output.mp4 not found!"
+            exit 1
+          fi
+          echo "File size: $(du -h output.mp4 | cut -f1)"
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: output.mp4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
