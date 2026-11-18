@@ -1,0 +1,67 @@
+name: Bundle All YAML Files to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'تگ انتشار (مثلاً yaml-bundle)'
+        required: true
+        default: 'yaml-bundle'
+      output_name:
+        description: 'نام فایل خروجی'
+        required: true
+        default: 'all-yaml-files.md'
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Collect all YAML files
+        run: |
+          OUT="${{ inputs.output_name }}"
+          echo "# تمام فایل‌های YAML پروژه" > "$OUT"
+          echo "" >> "$OUT"
+          echo "تاریخ تولید: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$OUT"
+          echo "" >> "$OUT"
+          echo "---" >> "$OUT"
+          echo "" >> "$OUT"
+
+          COUNT=0
+          while IFS= read -r file; do
+            echo "## \`${file#./}\`" >> "$OUT"
+            echo "" >> "$OUT"
+            echo '```yaml' >> "$OUT"
+            cat "$file" >> "$OUT"
+            echo "" >> "$OUT"
+            echo '```' >> "$OUT"
+            echo "" >> "$OUT"
+            COUNT=$((COUNT + 1))
+          done < <(find . -type f \( -name "*.yml" -o -name "*.yaml" \) \
+                   -not -path "./.git/*" \
+                   -not -path "./node_modules/*" \
+                   | sort)
+
+          echo "✅ Collected $COUNT YAML files into $OUT"
+          echo "" >> "$OUT"
+          echo "---" >> "$OUT"
+          echo "**مجموع فایل‌ها:** $COUNT" >> "$OUT"
+
+      - name: Show preview
+        run: head -n 40 "${{ inputs.output_name }}"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: ${{ inputs.output_name }}
+          body: |
+            📦 مجموعه تمام فایل‌های YAML پروژه
+            تولید شده در اجرای workflow شماره `${{ github.run_number }}`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
